@@ -1,66 +1,52 @@
-import scapy.all as scapy
-from scapy.layers.inet import IP, TCP, UDP, ICMP
-from scapy.layers.l2 import Ether
-import subprocess
-import virustotal_python
+import socket
+import threading
+import time
 
-# Initialize VirusTotal
-virustotal_vt = virustotal_python.Virustotal(apikey)
+class Firewall:
+    def __init__(self):
+        self.rules = {
+            'allow': [],
+            'block': []
+        }
 
-# Define a function to filter packets
-def filter_packet(packet):
-    # Reject null packets
-    if packet.haslayer(Ether) and packet[Ether].src == "00:00:00:00:00:00":
-        return False
+    def add_rule(self, rule_type, ip, port):
+        if rule_type == 'allow':
+            self.rules['allow'].append((ip, port))
+        elif rule_type == 'block':
+            self.rules['block'].append((ip, port))
 
-    # Reject packets with invalid TCP flags
-    if packet.haslayer(TCP) and (packet[TCP].flags & 0x80):  # 0x80 = SYN, ACK, FIN, RST
-        return False
-
-    # Reject ICMP echo requests (ping)
-    if packet.haslayer(ICMP) and packet[ICMP].type == 8:
-        return False
-
-    # Reject UDP packets with invalid checksums
-    if packet.haslayer(UDP) and packet[UDP].chksum == 0:
-        return False
-
-    # Reject packets with spoofed source IP addresses
-    if packet.haslayer(IP) and packet[IP].src == "0.0.0.0":
-        return False
-
-    # Scan packet payload for viruses
-    if packet.haslayer(Raw):
-        payload = bytes(packet[Raw].load)
-        virus_scan_results = []
-
-        # par2deep
-        par2deep_result = subprocess.run(['par2deep', '-c', '-', '-'], input=payload, capture_output=True, text=True)
-        if par2deep_result.returncode == 0:
-            virus_scan_results.append("par2deep: Virus detected")
-
-        # VirusTotal
-        vt_result = virustotal_vt.file_scan(payload, apikey='e57b52d1fccc825377635e5398e1ac74b04f0bcf1162629cc51307518df358f6')
-        if vt_result.positives > 0:
-            virus_scan_results.append("VirusTotal: " + vt_result.scan_id)
-
-        if virus_scan_results:
-            print("Virus detected:", ", ".join(virus_scan_results))
+    def check_rule(self, ip, port):
+        if (ip, port) in self.rules['block']:
+            return False
+        elif (ip, port) in self.rules['allow']:
+            return True
+        else:
             return False
 
-    # Accept all other packets
-    return True
+    def start(self):
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket.bind(('0.0.0.0', 8080))
+        self.server_socket.listen(5)
 
-# Define a function to handle incoming packets
-def handle_packet(packet):
-    if filter_packet(packet):
-        # Accept the packet and forward it to the next hop
-        packet.show()
-        scapy.send(packet, iface="eth0")  # Replace with your outgoing interface
-    else:
-        # Reject the packet
-        print("Rejected packet:")
-        packet.show()
+        print("Firewall started. Listening for incoming connections...")
 
-# Start sniffing incoming packets on the gateway interface
-scapy.sniff(iface="eth0", prn=handle_packet)  # Replace with your incoming interface
+        while True:
+            client_socket, address = self.server_socket.accept()
+            client_ip, client_port = address
+
+            print(f"Connection from {client_ip}:{client_port}")
+
+            if self.check_rule(client_ip, client_port):
+                print(f"Allowing connection from {client_ip}:{client_port}")
+                client_socket.sendall(b"Connection allowed")
+            else:
+                print(f"Blocking connection from {client_ip}:{client_port}")
+                client_socket.sendall(b"Connection blocked")
+
+            client_socket.close()
+
+firewall = Firewall()
+firewall.add_rule('allow', '192.168.1.100', 80)
+firewall.add_rule('block', '192.168.1.200', 80)
+
+firewall.start()
