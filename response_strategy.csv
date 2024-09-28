@@ -1,0 +1,11 @@
+min_damage,max_damage,response_strategy
+0.01,0.1,Monitor situation closely
+0.05,0.2,Evacuate immediately
+0.1,0.3,Activate emergency response
+0.15,0.4,Monitor situation closely
+0.2,0.5,Evacuate immediately
+0.25,0.6,Activate emergency response
+0.3,0.7,Monitor situation closely
+0.35,0.8,Evacuate immediately
+0.4,0.9,Activate emergency response
+0.45,1.0,Monitor situation closely
